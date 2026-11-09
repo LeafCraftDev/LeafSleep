@@ -10,16 +10,16 @@ java {
 }
 
 dependencies {
-    api "io.github.dailystruggle:server-api:${rootProject.version}"
-    api "io.github.dailystruggle:database-api:${rootProject.version}"
-    api "io.github.dailystruggle:yaml-api:${rootProject.version}"
-    api "io.github.dailystruggle:units-api:${rootProject.version}"
-    api "io.github.dailystruggle:bit-api:${rootProject.version}"
-    api "io.github.dailystruggle:config-bit-api:${rootProject.version}"
-    api "io.github.dailystruggle:commands-api:${rootProject.version}"
-    api "io.github.dailystruggle:menu-api:${rootProject.version}"
-    api "io.github.dailystruggle:effects-api:${rootProject.version}"
-    api "io.github.dailystruggle:predict-api:${rootProject.version}"
+    api project(':server-api')
+    api project(':database-api')
+    api project(':yaml-api')
+    api project(':units-api')
+    api project(':bit-api')
+    api project(':config-bit-api')
+    api project(':commands-api')
+    api project(':menu-api')
+    api project(':effects-api')
+    api project(':predict-api')
 
     compileOnly 'org.xerial:sqlite-jdbc:3.45.1.0'
     testImplementation 'org.xerial:sqlite-jdbc:3.45.1.0'

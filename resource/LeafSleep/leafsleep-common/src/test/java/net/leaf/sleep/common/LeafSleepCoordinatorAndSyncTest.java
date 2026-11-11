@@ -2106,4 +2106,181 @@ class LeafSleepCoordinatorAndSyncTest {
     transport.close();
     store.close();
   }
+
+  @Test
+  @DisplayName("ADR-001: Periodic SHARD_HEARTBEAT 20-tick deadband clock drift catch-up and rotating weather authority")
+  void periodicHeartbeatClockDriftCatchUpAndRotatingWeatherAuthority(@TempDir Path tempDir)
+      throws Exception {
+    MockShardServerAccessor accessorCharlie = new MockShardServerAccessor(tempDir);
+    accessorCharlie.setWorldNames(List.of("world"));
+    accessorCharlie.setWorldTime("world", 72_000L + 6000L);
+    accessorCharlie.setWeather("world", WeatherState.THUNDER, 6000);
+
+    LeafSleepConfig baseCfg = LeafSleepConfig.load(tempDir);
+    LeafSleepConfig charlieCfg =
+        new LeafSleepConfig(
+            "shard-charlie",
+            baseCfg.defaultQuorumPolicy(),
+            baseCfg.defaultQuorumValue(),
+            baseCfg.defaultCancelPolicy(),
+            baseCfg.sleepCurve(),
+            baseCfg.cancelCurve(),
+            baseCfg.warmupDelayTicks(),
+            baseCfg.warmupActionBar(),
+            baseCfg.warmupBossBar(),
+            baseCfg.increment(),
+            baseCfg.timeBetweenIncrements(),
+            baseCfg.sleepCooldownSeconds(),
+            baseCfg.cancelCooldownSeconds(),
+            baseCfg.wakeOnCancel(),
+            baseCfg.clearWeatherOnSkip(),
+            baseCfg.clearThunderOnSkip(),
+            baseCfg.resetPhantomStatistic(),
+            baseCfg.excludeAfkAndVanished(),
+            baseCfg.excludeCreativeAndSpectator(),
+            baseCfg.targetDawnTimeTicks(),
+            baseCfg.nightStartTicks(),
+            baseCfg.nightEndTicks(),
+            baseCfg.allowSleepDuringThunder(),
+            baseCfg.budgetMaxFramesPerTick(),
+            baseCfg.sharding(),
+            baseCfg.storage(),
+            baseCfg.messages(),
+            baseCfg.wakeupEffects(),
+            baseCfg.sleepMessages(),
+            baseCfg.worlds());
+
+    SleepDatabaseStore store = new SleepDatabaseStore(accessorCharlie, tempDir, charlieCfg.storage());
+    assertTrue(store.initializeAsync().get(5, TimeUnit.SECONDS));
+    SleepSyncTransport.LocalOnlyTransport transport = new SleepSyncTransport.LocalOnlyTransport(16);
+    ShardSleepCoordinator charlieCoord =
+        new ShardSleepCoordinator(
+            accessorCharlie, () -> charlieCfg, store, transport, new MenuTokenService());
+
+    long nowMs = System.currentTimeMillis();
+
+    // 1. Sub-deadband jitter (+12 ticks < 20-tick deadband) must not alter local world clock
+    long jitterPacked =
+        ShardSleepCoordinator.packHeartbeatTimeAndWeather(72_000L + 6012L, WeatherState.RAIN);
+    assertEquals(72_000L + 6012L, ShardSleepCoordinator.unpackHeartbeatTimeTicks(jitterPacked));
+    assertEquals(WeatherState.RAIN, ShardSleepCoordinator.unpackHeartbeatWeather(jitterPacked));
+
+    charlieCoord.onRemoteFrame(
+        new SleepSyncFrame(
+            SleepSyncFrame.FrameType.SHARD_HEARTBEAT,
+            "shard-alpha",
+            "overworld-main",
+            "world",
+            null,
+            "",
+            2,
+            0,
+            0,
+            0,
+            20,
+            List.of(),
+            List.of(),
+            3L,
+            jitterPacked,
+            true,
+            nowMs));
+    assertEquals(
+        72_000L + 6000L,
+        accessorCharlie.getWorldFullTime("world"),
+        "Sub-deadband clock difference (+12 ticks < 20 ticks) must not trigger sky-stutter time jump");
+    assertEquals(
+        "shard-alpha",
+        charlieCoord.resolveWeatherAuthorityShard("overworld-main", charlieCfg, nowMs).orElse(""),
+        "Lowest active shardId (shard-alpha) must be elected weather authority");
+    assertEquals(
+        WeatherState.RAIN,
+        accessorCharlie.getWeather("world"),
+        "Weather must synchronize to the elected authority shard (shard-alpha -> RAIN)");
+
+    // 2. Tick delay drift (+340 ticks >= 20-tick deadband) catches up lagging shard's clock
+    long catchupPacked =
+        ShardSleepCoordinator.packHeartbeatTimeAndWeather(72_000L + 6340L, WeatherState.RAIN);
+    charlieCoord.onRemoteFrame(
+        new SleepSyncFrame(
+            SleepSyncFrame.FrameType.SHARD_HEARTBEAT,
+            "shard-alpha",
+            "overworld-main",
+            "world",
+            null,
+            "",
+            2,
+            0,
+            0,
+            0,
+            20,
+            List.of(),
+            List.of(),
+            3L,
+            catchupPacked,
+            true,
+            nowMs));
+    assertTrue(
+        accessorCharlie.getWorldFullTime("world") >= 72_000L + 6340L,
+        "Lagging shard must advance its world clock when behind peer by >= 20 ticks");
+
+    // 3. Non-authority shard (shard-bravo > shard-alpha) must not override shard-alpha's weather while shard-alpha is live
+    long bravoClearPacked =
+        ShardSleepCoordinator.packHeartbeatTimeAndWeather(72_000L + 6345L, WeatherState.CLEAR);
+    charlieCoord.onRemoteFrame(
+        new SleepSyncFrame(
+            SleepSyncFrame.FrameType.SHARD_HEARTBEAT,
+            "shard-bravo",
+            "overworld-main",
+            "world",
+            null,
+            "",
+            2,
+            0,
+            0,
+            0,
+            20,
+            List.of(),
+            List.of(),
+            3L,
+            bravoClearPacked,
+            true,
+            nowMs));
+    assertEquals(
+        WeatherState.RAIN,
+        accessorCharlie.getWeather("world"),
+        "Non-authority shard must not overwrite weather while shard-alpha is active");
+
+    // 4. Authority rotation: if shard-alpha goes stale (> peerStaleWindowMs), authority rotates to shard-bravo
+    long staleAlphaTimestamp = nowMs - 120_000L;
+    charlieCoord.onRemoteFrame(
+        new SleepSyncFrame(
+            SleepSyncFrame.FrameType.SHARD_HEARTBEAT,
+            "shard-alpha",
+            "overworld-main",
+            "world",
+            null,
+            "",
+            2,
+            0,
+            0,
+            0,
+            20,
+            List.of(),
+            List.of(),
+            3L,
+            catchupPacked,
+            true,
+            staleAlphaTimestamp));
+    assertEquals(
+        "shard-bravo",
+        charlieCoord.resolveWeatherAuthorityShard("overworld-main", charlieCfg, nowMs).orElse(""),
+        "When shard-alpha ages past peerStaleWindowMs, weather authority must rotate to shard-bravo");
+    assertEquals(
+        WeatherState.CLEAR,
+        accessorCharlie.getWeather("world"),
+        "Upon authority rotation to shard-bravo, world weather must adopt shard-bravo's CLEAR state");
+
+    transport.close();
+    store.close();
+  }
 }

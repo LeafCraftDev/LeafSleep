@@ -125,8 +125,45 @@ public final class ShardSleepCoordinator {
     }
   }
 
+  /** Default minimum tick drift before periodic heartbeat clock catch-up applies (`20 ticks` = `1.0s`). */
+  public static final long DEFAULT_TIME_DRIFT_DEADBAND_TICKS = 20L;
+
   private static final long PEER_STALE_MS = 30_000L;
   private static final long IDLE_RECOMPUTE_INTERVAL_TICKS = 20L;
+  private static final long HEARTBEAT_WEATHER_TAG_BIT = 1L << 62;
+  private static final long HEARTBEAT_TIME_MASK = 0x0FFF_FFFF_FFFF_FFFFL;
+
+  /**
+   * Packs a non-negative world full-time tick counter (`bits 0..59`) and {@link WeatherState}
+   * ordinal (`bits 60..61`) with {@link #HEARTBEAT_WEATHER_TAG_BIT} (`bit 62`) for {@code
+   * SHARD_HEARTBEAT} frames.
+   */
+  public static long packHeartbeatTimeAndWeather(long fullTimeTicks, WeatherState weather) {
+    long safeTicks = Math.max(0L, fullTimeTicks) & HEARTBEAT_TIME_MASK;
+    long weatherOrd = (weather != null ? weather.ordinal() : 0) & 0x3L;
+    return HEARTBEAT_WEATHER_TAG_BIT | (weatherOrd << 60) | safeTicks;
+  }
+
+  /** Unpacks the world time ticks from a {@code SHARD_HEARTBEAT} {@code targetDayTimeTicks} field. */
+  public static long unpackHeartbeatTimeTicks(long rawTargetDayTimeTicks) {
+    if ((rawTargetDayTimeTicks & HEARTBEAT_WEATHER_TAG_BIT) != 0L) {
+      return rawTargetDayTimeTicks & HEARTBEAT_TIME_MASK;
+    }
+    return Math.max(0L, rawTargetDayTimeTicks);
+  }
+
+  /**
+   * Unpacks the {@link WeatherState} from a {@code SHARD_HEARTBEAT} {@code targetDayTimeTicks}
+   * field when {@link #HEARTBEAT_WEATHER_TAG_BIT} is set, or {@code null} if untagged.
+   */
+  public static WeatherState unpackHeartbeatWeather(long rawTargetDayTimeTicks) {
+    if ((rawTargetDayTimeTicks & HEARTBEAT_WEATHER_TAG_BIT) == 0L) {
+      return null;
+    }
+    int ord = (int) ((rawTargetDayTimeTicks >>> 60) & 0x3L);
+    WeatherState[] values = WeatherState.values();
+    return (ord >= 0 && ord < values.length) ? values[ord] : WeatherState.CLEAR;
+  }
 
   /** Active smooth time-advance state for a {@code shardGroupId} (OnePlayerSleep {@code PassTime}). */
   private static final class PassTimeState {
@@ -157,6 +194,8 @@ public final class ShardSleepCoordinator {
   private final Random random = new Random();
 
   private final Map<String, Map<String, ShardCounts>> groupShardCounts = new ConcurrentHashMap<>();
+  private final Map<String, Map<String, WeatherState>> groupShardWeather =
+      new ConcurrentHashMap<>();
   private final Map<String, List<PlayerSleepSnapshot>> cachedWorldPlayers =
       new ConcurrentHashMap<>();
   private final Map<String, Set<UUID>> localSleepVoters = new ConcurrentHashMap<>();
@@ -945,6 +984,7 @@ public final class ShardSleepCoordinator {
           clearWarmupFeedback(groupId);
           groupPassTimeStates.remove(groupId);
         }
+        reconcileHeartbeatTimeAndWeather(frame, groupId, worldName, staleHeartbeatVotes, cfg);
         if (frame.targetDayEpoch() > getLastCommittedEpoch(groupId)) {
           seedEpochWatermark(groupId, frame.targetDayEpoch());
           databaseStore.saveEpochWatermarkAsync(
@@ -1800,6 +1840,11 @@ public final class ShardSleepCoordinator {
       String playerName,
       ShardCounts local) {
     LeafSleepConfig cfg = configSupplier.get();
+    long reportedTimeTicks =
+        type == SleepSyncFrame.FrameType.SHARD_HEARTBEAT
+            ? packHeartbeatTimeAndWeather(
+                accessor.getWorldFullTime(worldName), accessor.getWeather(worldName))
+            : accessor.getWorldTime(worldName);
     SleepSyncFrame frame =
         new SleepSyncFrame(
             type,
@@ -1816,7 +1861,7 @@ public final class ShardSleepCoordinator {
             local.sleepingPlayers(),
             local.cancellingPlayers(),
             getLastCommittedEpoch(shardGroupId),
-            accessor.getWorldTime(worldName),
+            reportedTimeTicks,
             cfg.clearWeatherOnSkip(),
             System.currentTimeMillis());
     transport.publish(frame);
@@ -2023,6 +2068,124 @@ public final class ShardSleepCoordinator {
   private void sendPrefixed(UUID playerId, String message, boolean error) {
     LeafSleepConfig cfg = configSupplier.get();
     accessor.sendMessage(playerId, cfg.messages().prefix() + message, error);
+  }
+
+  private void reconcileHeartbeatTimeAndWeather(
+      SleepSyncFrame frame,
+      String shardGroupId,
+      String worldName,
+      boolean staleHeartbeatVotes,
+      LeafSleepConfig cfg) {
+    if (frame.type() != SleepSyncFrame.FrameType.SHARD_HEARTBEAT) {
+      return;
+    }
+    long nowMs = System.currentTimeMillis();
+    long rawTicks = frame.targetDayTimeTicks();
+    WeatherState remoteWeather = unpackHeartbeatWeather(rawTicks);
+    if (remoteWeather != null) {
+      groupShardWeather
+          .computeIfAbsent(shardGroupId, k -> new ConcurrentHashMap<>())
+          .put(frame.shardId(), remoteWeather);
+    }
+
+    if (!staleHeartbeatVotes
+        && !groupPassTimeStates.containsKey(shardGroupId)
+        && rawTicks > 0L) {
+      applyHeartbeatClockCatchUp(frame, shardGroupId, worldName, rawTicks, nowMs, cfg);
+    }
+
+    applyRotatingAuthorityWeather(shardGroupId, worldName, nowMs, cfg);
+  }
+
+  private void applyHeartbeatClockCatchUp(
+      SleepSyncFrame frame,
+      String shardGroupId,
+      String worldName,
+      long rawTicks,
+      long nowMs,
+      LeafSleepConfig cfg) {
+    long remoteTicks = unpackHeartbeatTimeTicks(rawTicks);
+    long transitTicks =
+        frame.timestampMs() > 0L
+            ? Math.max(0L, Math.min(200L, (nowMs - frame.timestampMs()) / 50L))
+            : 0L;
+    long adjustedRemoteTicks = remoteTicks + transitTicks;
+    boolean higherEpoch = frame.targetDayEpoch() > getLastCommittedEpoch(shardGroupId);
+    for (String targetWorld : resolveLocalWorldsForGroup(shardGroupId, worldName, cfg)) {
+      long localFull = accessor.getWorldFullTime(targetWorld);
+      long candidateFull =
+          computeCatchUpFullTime(localFull, remoteTicks, adjustedRemoteTicks, higherEpoch);
+      if (candidateFull - localFull >= DEFAULT_TIME_DRIFT_DEADBAND_TICKS) {
+        accessor.setWorldTime(targetWorld, candidateFull);
+      }
+    }
+  }
+
+  private static long computeCatchUpFullTime(
+      long localFull, long remoteTicks, long adjustedRemoteTicks, boolean higherEpoch) {
+    if (remoteTicks < 24000L && localFull >= 24000L) {
+      long localDayBase = (localFull / 24000L) * 24000L;
+      return localDayBase + Math.floorMod(adjustedRemoteTicks, 24000L);
+    }
+    if (Math.abs(adjustedRemoteTicks - localFull) < 24000L || higherEpoch) {
+      return adjustedRemoteTicks;
+    }
+    long todDiff = Math.floorMod(adjustedRemoteTicks, 24000L) - Math.floorMod(localFull, 24000L);
+    return localFull + todDiff;
+  }
+
+  private void applyRotatingAuthorityWeather(
+      String shardGroupId, String worldName, long nowMs, LeafSleepConfig cfg) {
+    Optional<String> authorityOpt = resolveWeatherAuthorityShard(shardGroupId, cfg, nowMs);
+    if (authorityOpt.isEmpty()) {
+      return;
+    }
+    String authorityShard = authorityOpt.get();
+    if (authorityShard.equals(cfg.serverShardId())) {
+      return;
+    }
+    WeatherState authoritativeWeather =
+        groupShardWeather
+            .getOrDefault(shardGroupId, Collections.emptyMap())
+            .get(authorityShard);
+    if (authoritativeWeather == null) {
+      return;
+    }
+    for (String targetWorld : resolveLocalWorldsForGroup(shardGroupId, worldName, cfg)) {
+      if (accessor.getWeather(targetWorld) != authoritativeWeather) {
+        accessor.setWeather(targetWorld, authoritativeWeather, 6000);
+      }
+    }
+  }
+
+  /**
+   * Elects the deterministic rotating weather authority shard for {@code shardGroupId}: the active
+   * non-stale shard with the lowest lexicographical {@code shardId}. Automatically rotates to the
+   * next healthy shard if the prior authority goes stale beyond {@code peerStaleWindowMs}.
+   */
+  public Optional<String> resolveWeatherAuthorityShard(
+      String shardGroupId, LeafSleepConfig cfg, long nowMs) {
+    if (shardGroupId == null || shardGroupId.isBlank() || cfg == null) {
+      return Optional.empty();
+    }
+    long peerStaleWindowMs =
+        Math.max(PEER_STALE_MS, cfg.sharding().heartbeatIntervalTicks() * 50L * 3L);
+    Map<String, ShardCounts> shards =
+        groupShardCounts.getOrDefault(shardGroupId, Collections.emptyMap());
+    String bestShardId = null;
+    for (ShardCounts sc : shards.values()) {
+      if (sc.shardId() == null || sc.shardId().isBlank()) continue;
+      boolean active =
+          sc.shardId().equals(cfg.serverShardId())
+              || (nowMs - sc.updatedAtMs()) <= peerStaleWindowMs;
+      if (active && (bestShardId == null || sc.shardId().compareTo(bestShardId) < 0)) {
+        bestShardId = sc.shardId();
+      }
+    }
+    if (bestShardId == null && cfg.serverShardId() != null && !cfg.serverShardId().isBlank()) {
+      bestShardId = cfg.serverShardId();
+    }
+    return Optional.ofNullable(bestShardId);
   }
 
   public long getLastCommittedEpoch(String shardGroupId) {

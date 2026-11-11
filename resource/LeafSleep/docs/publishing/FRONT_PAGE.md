@@ -2,8 +2,8 @@
 Single source for every LeafSleep / OnePlayerSleep storefront page (BuiltByBit, Modrinth, Hangar, SpigotMC).
 Follows docs/dev/RULES.md Rule D-006 (first-person plain voice, 3-Zone hierarchy,
 ASCII punctuation only, concrete numbers and honest caveats).
-  Paid BuiltByBit title:  "LeafSleep-Pro"  tagline: "Cross-server & multi-loader sleep voting and night skip (/sleep & /ops) for Paper, Spigot, Folia, Fabric, NeoForge & Velocity"
-  Free title:             "LeafSleep"      tagline: "Cross-server & multi-loader sleep voting and night skip (/sleep & /ops) for Paper, Spigot, Folia, Fabric, NeoForge & Velocity"
+  BuiltByBit Carousel Slides: docs/assets/leafsleep-action-showcase.webp
+  Title: "LeafSleep"  tagline: "Cross-server & multi-loader sleep voting and night skip (/sleep & /ops) for Paper, Spigot, Folia, Fabric, NeoForge & Velocity"
 -->
 
 <div align="center">
@@ -21,17 +21,6 @@ ASCII punctuation only, concrete numbers and honest caveats).
 **{{name}} is a sleep voting and night-skip plugin and mod, and the cross-platform sequel to `OnePlayerSleep`.** Drop the jar in and one player entering a bed (or a configurable share of online players) starts a short warmup countdown with clickable `[Sleep]` and `[Cancel]` chat buttons before advancing the world to morning, clearing weather, and resetting Phantom rest timers. It runs on single survival servers (`Paper`, `Spigot`, `Folia`, `Fabric`, `NeoForge`) and across multi-server shards (`Velocity`, `Redis`, or UDP).
 
 I built `OnePlayerSleep` so a single player AFK in a mob farm wouldn't keep the whole server in the dark, and rebuilt it as `LeafSleep` on the shared [`DailyStruggle/RTP`](https://github.com/DailyStruggle/RTP) SDK so one jar works across Paper, Folia, Fabric, NeoForge, and multi-server networks while keeping every `/ops` command and permission alias intact.
-
-<!-- only: bbb-pro -->
-<!-- kind: promo -->
-This listing is how you pay for support. The code is the same as the [free download](https://modrinth.com/plugin/oneplayersleep) and all of it is MIT licensed. Paying doesn't unlock anything in the plugin; details are in [What paying gets you](#what-paying-gets-you) below.
-<!-- /kind -->
-<!-- /only -->
-<!-- only: bbb-lite -->
-<!-- kind: promo -->
-There is also a paid LeafSleep-Pro listing on BuiltByBit. It is the same code, and nothing in the plugin is locked. Paying gets you priority support and a patch release when a bug you report needs one.
-<!-- /kind -->
-<!-- /only -->
 
 ### The short version
 
@@ -127,23 +116,6 @@ Vanilla Minecraft requires every player in the Overworld to lie in a bed at the 
 
 I built `OnePlayerSleep` and `LeafSleep` to scale sleep requirements with online population, give players a `[Cancel]` tug-of-war window, reset Phantom rest timers for everyone who stayed awake, and keep multi-server survival worlds on the same day cycle.
 
-<!-- only: bbb-pro -->
-<!-- kind: promo -->
----
-
-## What paying gets you
-
-Same code, config, and commands as the free download, under the same MIT license. Nothing in the plugin is locked:
-
-| This listing | Free download |
-|---|---|
-| Priority on my support queue | Community support, best effort |
-| A patch release when a bug you report needs one | Updates when I choose to publish them |
-
-Switching between the free download and this one is a jar swap.
-<!-- /kind -->
-<!-- /only -->
-
 ---
 
 ## Commands, configuration, and FAQ
@@ -213,9 +185,8 @@ A: Yes. Every `/ops` subcommand (`/ops status`, `/ops sleep`, `/ops cancel`, `/o
 - [**Commands & permissions**](../admin/COMMANDS.md): `/sleep` and `/ops` command reference
 - [**BIT code catalog (`[OPS bit]`)**](../dev/BIT_CODES.md): startup and `/sleep test` diagnostic codes
 - [**Changelog**](../../CHANGELOG.md)
-- [**LeafRTP**](../../../LeafRTP/docs/publishing/FRONT_PAGE.md): zero-wait random teleportation (`/rtp` & `/wild`) with `.mca`/`.linear` region pre-filtering
+- [**LeafRTP**](../../../LeafRTP/docs/publishing/FRONT_PAGE.md): zero-wait random teleportation (`/rtp` & `/wild`) with `.mca`, `.linear`, and `.lca` region pre-filtering
+- [**LeafAnvil & Open `.lca` Codec (`anvil-api`, MIT)**](../../../LeafAnvil/docs/publishing/FRONT_PAGE.md): `50%` smaller worlds, `15.5x` faster shutdown saves, and 4-tier bit-rot self-healing
+- [**LeafSleuth**](../../../LeafSleuth/docs/publishing/FRONT_PAGE.md): catches walk-away lag-machine builders (`CoreProtect`), item dupes, stash rings, and VPN ban-evader alts while cutting hotspot load by `-68.6%`
 - [**LeafTreeGen**](../../../LeafTreeGen/docs/publishing/FRONT_PAGE.md): procedural custom biome trees baked into native vanilla jigsaw worldgen datapacks
 - [**Source on GitHub**](https://github.com/LeafCraftDev/LeafSleep): MIT source code, issues, and automated tests
-<!-- only: bbb-pro -->
-- [**Free download**](https://modrinth.com/plugin/oneplayersleep)
-<!-- /only -->

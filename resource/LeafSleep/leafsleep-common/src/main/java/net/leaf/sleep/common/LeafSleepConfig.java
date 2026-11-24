@@ -1,12 +1,12 @@
 package net.leaf.sleep.common;
 
 import io.github.dailystruggle.bit.BitFinding;
-import io.github.dailystruggle.rtp.common.bit.config.ConfigSnapshot;
-import io.github.dailystruggle.rtp.common.bit.config.DirectiveValidator;
-import io.github.dailystruggle.rtp.common.configuration.ConfigParser;
-import io.github.dailystruggle.rtp.common.configuration.MultiConfigParser;
-import io.github.dailystruggle.rtp.common.configuration.yaml.RtpYamlConfig;
-import io.github.dailystruggle.rtp.common.configuration.yaml.RtpYamlSection;
+import net.leaf.bit.config.ConfigSnapshot;
+import net.leaf.bit.config.DirectiveValidator;
+import net.leaf.yaml.configuration.ConfigParser;
+import net.leaf.yaml.configuration.MultiConfigParser;
+import net.leaf.yaml.RtpYamlConfig;
+import net.leaf.yaml.RtpYamlSection;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -815,7 +815,7 @@ public final class LeafSleepConfig {
               snapshot,
               fileName,
               loader,
-              io.github.dailystruggle.rtp.common.bit.config.DirectiveCodes.DEFAULT));
+              net.leaf.bit.config.DirectiveCodes.DEFAULT));
     }
     String bundledDefaultTheme = DirectiveValidator.readResource(loader, "messages/default.yml");
     if (bundledDefaultTheme != null) {
@@ -824,7 +824,7 @@ public final class LeafSleepConfig {
             DirectiveValidator.validate(
                 doc,
                 bundledDefaultTheme,
-                io.github.dailystruggle.rtp.common.bit.config.DirectiveCodes.DEFAULT));
+                net.leaf.bit.config.DirectiveCodes.DEFAULT));
       }
     }
     return findings;

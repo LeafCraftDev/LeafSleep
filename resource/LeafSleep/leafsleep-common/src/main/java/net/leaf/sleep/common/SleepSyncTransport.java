@@ -1,10 +1,10 @@
 package net.leaf.sleep.common;
 
-import io.github.dailystruggle.rtp.common.predict.BudgetPacer;
-import io.github.dailystruggle.rtp.proxy.common.transport.redis.resp.RespConnection;
-import io.github.dailystruggle.rtp.proxy.common.transport.redis.resp.RespEndpoint;
-import io.github.dailystruggle.rtp.proxy.common.transport.redis.resp.RespPool;
-import io.github.dailystruggle.rtp.proxy.common.transport.redis.resp.RespPubSub;
+import net.leaf.predict.BudgetPacer;
+import net.leaf.database.resp.RespConnection;
+import net.leaf.database.resp.RespEndpoint;
+import net.leaf.database.resp.RespPool;
+import net.leaf.database.resp.RespPubSub;
 import io.github.dailystruggle.server.api.ServerAccessor;
 import java.io.IOException;
 import java.net.DatagramPacket;

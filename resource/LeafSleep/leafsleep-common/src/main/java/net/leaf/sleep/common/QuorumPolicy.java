@@ -1,6 +1,6 @@
 package net.leaf.sleep.common;
 
-import io.github.dailystruggle.rtp.common.predict.UnitCurve;
+import net.leaf.predict.UnitCurve;
 import java.util.Locale;
 
 /**

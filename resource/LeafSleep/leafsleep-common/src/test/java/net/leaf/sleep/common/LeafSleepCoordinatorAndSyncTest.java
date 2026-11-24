@@ -1018,18 +1018,14 @@ class LeafSleepCoordinatorAndSyncTest {
                       try (java.io.InputStream in = client.getInputStream();
                           java.io.OutputStream out = client.getOutputStream()) {
                         while (runningRedis.get() && !client.isClosed()) {
-                          Object cmd =
-                              io.github.dailystruggle.rtp.proxy.common.transport.redis.resp
-                                  .RespProtocol.readReply(in);
+                          Object cmd = net.leaf.database.resp.RespProtocol.readReply(in);
                           if (cmd instanceof List<?> list && !list.isEmpty()) {
                             String op =
-                                io.github.dailystruggle.rtp.proxy.common.transport.redis.resp
-                                    .RespProtocol.toUtf8((byte[]) list.get(0))
+                                net.leaf.database.resp.RespProtocol.toUtf8((byte[]) list.get(0))
                                     .toUpperCase();
                             if ("SUBSCRIBE".equals(op)) {
                               String ch =
-                                  io.github.dailystruggle.rtp.proxy.common.transport.redis.resp
-                                      .RespProtocol.toUtf8((byte[]) list.get(1));
+                                  net.leaf.database.resp.RespProtocol.toUtf8((byte[]) list.get(1));
                               subStreams.add(out);
                               String ack =
                                   "*3\r\n$9\r\nsubscribe\r\n$"
@@ -1041,11 +1037,9 @@ class LeafSleepCoordinatorAndSyncTest {
                               out.flush();
                             } else if ("PUBLISH".equals(op)) {
                               String ch =
-                                  io.github.dailystruggle.rtp.proxy.common.transport.redis.resp
-                                      .RespProtocol.toUtf8((byte[]) list.get(1));
+                                  net.leaf.database.resp.RespProtocol.toUtf8((byte[]) list.get(1));
                               String msg =
-                                  io.github.dailystruggle.rtp.proxy.common.transport.redis.resp
-                                      .RespProtocol.toUtf8((byte[]) list.get(2));
+                                  net.leaf.database.resp.RespProtocol.toUtf8((byte[]) list.get(2));
                               out.write(":1\r\n".getBytes(StandardCharsets.UTF_8));
                               out.flush();
                               String push =
@@ -1877,8 +1871,8 @@ class LeafSleepCoordinatorAndSyncTest {
     assertTrue(
         LeafSleepConfig.validateDirectory(tempDir).isEmpty(),
         "Bundled config.yml, player.yml, commands.yml, sleep.yml, network.yml, and messages/*.yml must validate cleanly with zero DirectiveValidator findings");
-    io.github.dailystruggle.rtp.common.configuration.yaml.RtpYamlConfig customNet =
-        io.github.dailystruggle.rtp.common.configuration.yaml.RtpYamlConfig.parse(
+    net.leaf.yaml.RtpYamlConfig customNet =
+        net.leaf.yaml.RtpYamlConfig.parse(
             "version: \"1.0\"\n"
                 + "serverShardId: \"survival-eu-2\"\n"
                 + "sharding:\n"
@@ -1890,13 +1884,13 @@ class LeafSleepCoordinatorAndSyncTest {
                 + "  database: \"sleep_cluster\"\n");
     LeafSleepConfig netMerged =
         LeafSleepConfig.fromYaml(
-            io.github.dailystruggle.rtp.common.configuration.yaml.RtpYamlConfig.load(
+            net.leaf.yaml.RtpYamlConfig.load(
                 tempDir.resolve("config.yml").toFile()),
-            io.github.dailystruggle.rtp.common.configuration.yaml.RtpYamlConfig.load(
+            net.leaf.yaml.RtpYamlConfig.load(
                 tempDir.resolve("player.yml").toFile()),
-            io.github.dailystruggle.rtp.common.configuration.yaml.RtpYamlConfig.load(
+            net.leaf.yaml.RtpYamlConfig.load(
                 tempDir.resolve("commands.yml").toFile()),
-            io.github.dailystruggle.rtp.common.configuration.yaml.RtpYamlConfig.load(
+            net.leaf.yaml.RtpYamlConfig.load(
                 tempDir.resolve("sleep.yml").toFile()),
             customNet);
     assertEquals("survival-eu-2", netMerged.serverShardId());

@@ -43,7 +43,7 @@ storage:
   type: "SQLITE"
 ```
 
-- **Why `warmupDelayTicks: 60` matters:** Even on a `one player` server, keeping a 3-second (`60`-tick) warmup gives a friend fighting a Phantom or curing a zombie villager time to click `[Cancel]` in chat before dawn commits.
+- **3-second warmup window (`warmupDelayTicks: 60`):** Even on a `one player` server, keeping a 3-second (`60`-tick) warmup gives a friend fighting a Phantom or curing a zombie villager time to click `[Cancel]` in chat before dawn commits.
 - **When to use `PERCENTAGE` instead:** If you want a fixed fraction (e.g. `25%` of eligible players) on a server with a steady player count, set `defaultQuorumPolicy: "percentage"` and `defaultQuorumValue: 25`.
 
 ---
@@ -154,7 +154,7 @@ When a large survival world is split across multiple backend servers (`backend-a
    - `/sleep status` aggregates `(eligibleCount, sleepingCount, cancellingCount, maxPlayers)` across all live shards in the `shardGroupId` (e.g., 4 shards with `max-players=20` each report `shards=4, eligible=20/80`).
 2. **Shared `shardGroupId` (`sleep.yml`):**
    - Set `worlds.world.shardGroupId: "overworld-main"` on all 4 shards.
-3. **Why `REDIS_PUBSUB` Is Preferred Over `PLUGIN_MESSAGING` for 3+ Shards or Multi-Proxy Networks:**
+3. **`REDIS_PUBSUB` vs. `PLUGIN_MESSAGING` for 3+ Shards or Multi-Proxy Networks:**
    - `sharding.transport: "redis pubsub"` uses `:database-api`'s zero-dependency `RespPool` / `RespPubSub` with an asynchronous outbound writer thread (`zero` main-thread TCP blocking) and marshals incoming frames onto the server scheduler.
    - Crucially, `REDIS_PUBSUB` delivers `EPOCH_COMMIT` and `SHARD_HEARTBEAT` frames to a shard **even when that shard has `0` online players**, keeping world clocks synchronized across empty and populated shards alike.
    - Configure Redis host/port/password via `sharding.bindHost` and `sharding.bindPort` in `config.yml` (or environment variables `LEAFSLEEP_REDIS_HOST`, `LEAFSLEEP_REDIS_PORT`, `LEAFSLEEP_REDIS_PASSWORD`) and sign frames with `LEAFSLEEP_HMAC_SECRET`.
